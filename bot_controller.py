@@ -14,9 +14,17 @@ import re
 
 # Configuration
 def get_config():
+    telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    
+    if not telegram_bot_token:
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+    if not telegram_chat_id:
+        raise ValueError("TELEGRAM_CHAT_ID environment variable is required")
+    
     return {
-        'telegram_bot_token': os.getenv('TELEGRAM_BOT_TOKEN', '8413664821:AAHjBwysQWk3GFdJV3Bvk3Jp1vhDLpoymI8'),
-        'telegram_chat_id': os.getenv('TELEGRAM_CHAT_ID', '1366899854'),
+        'telegram_bot_token': telegram_bot_token,
+        'telegram_chat_id': telegram_chat_id,
         'api_url': 'https://www.sheinindia.in/c/sverse-5939-37961',
         'check_interval_minutes': 5,
         'min_stock_threshold': 10,
@@ -349,21 +357,15 @@ Send /help for all commands.
         # Handle other messages
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.show_help))
     
-    async def run_bot(self):
-        """Run the bot"""
-        self.application = Application.builder().token(self.config['telegram_bot_token']).build()
-        self.setup_handlers()
-        
-        # Send startup notification
-        await self.send_telegram_message("🤖 Shein Stock Monitor is now ONLINE and ready!")
-        
-        logger.info("🤖 Bot started successfully - ready for commands!")
-        print("🚀 Bot is running! Open Telegram and send /start to begin monitoring.")
-        
-        await self.application.run_polling()
+    async def post_init(self, application):
+        """Send startup notification after bot is initialized"""
+        await application.bot.send_message(
+            chat_id=self.config['telegram_chat_id'],
+            text="🤖 Shein Stock Monitor is now ONLINE and ready!"
+        )
 
-async def main():
-    """Main async function"""
+def main():
+    """Main function"""
     print("🚀 Starting Shein Stock Monitor Cloud Bot...")
     print("💡 This bot runs 24/7 in the cloud!")
     print("📱 Control it entirely via Telegram commands")
@@ -371,13 +373,20 @@ async def main():
     config = get_config()
     monitor_bot = SheinStockMonitorBot(config)
     
-    try:
-        # Run the bot (this will keep running)
-        await monitor_bot.run_bot()
-    except Exception as e:
-        logger.error(f"Bot error: {e}")
-        print(f"❌ Error: {e}")
+    # Create application with post_init callback
+    monitor_bot.application = (
+        Application.builder()
+        .token(config['telegram_bot_token'])
+        .post_init(monitor_bot.post_init)
+        .build()
+    )
+    monitor_bot.setup_handlers()
+    
+    logger.info("🤖 Bot started successfully - ready for commands!")
+    print("🚀 Bot is running! Open Telegram and send /start to begin monitoring.")
+    
+    # Run polling (this handles the event loop internally)
+    monitor_bot.application.run_polling()
 
 if __name__ == "__main__":
-    # Proper asyncio execution
-    asyncio.run(main())
+    main()
